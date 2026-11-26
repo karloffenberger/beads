@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bead Curtain Designer</title>
+<style>
+  :root {
+    --bg: #f4f1ec; --panel: #ffffff; --ink: #2b2620; --muted: #7a7166;
+    --line: #e2dcd2; --accent: #8a5a2b; --accent-ink: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1a17; --panel: #262320; --ink: #ece6dc; --muted: #a59b8d;
+      --line: #3a352f; --accent: #d39a5c; --accent-ink: #1c1a17;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background: var(--bg); color: var(--ink); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header span { color: var(--muted); }
+  .layout { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; padding: 12px 16px; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+  label { display: block; margin: 8px 0 3px; font-weight: 500; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  input[type=number], select { width: 100%; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px;
+         background: var(--bg); color: var(--ink); font: inherit; }
+  input[type=file] { width: 100%; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line);
+           background: var(--bg); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:hover { filter: brightness(1.05); }
+  .beads { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+  .bead-row { display: grid; grid-template-columns: 36px 1fr 70px 28px; gap: 6px; align-items: center; }
+  .bead-row input[type=color] { width: 36px; height: 30px; border: none; padding: 0; background: none; cursor: pointer; }
+  .bead-row input[type=text] { padding: 5px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--ink); font: inherit; min-width: 0; }
+  .bead-row .x { padding: 2px 0; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .stat b { display: block; font-size: 20px; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  .viewer { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .viewer-tools { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .viewer-tools label { display: inline-flex; gap: 6px; align-items: center; margin: 0; font-weight: 400; }
+  #canvasWrap { overflow: auto; max-height: 78vh; text-align: center; background: #d9d4cc; border-radius: 8px; }
+  canvas#curtain { display: inline-block; max-width: 100%; height: auto; }
+  #preview { max-width: 100%; max-height: 160px; display: none; margin-top: 8px; border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); }
+  .sw { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: -2px; margin-right: 6px; border: 1px solid rgba(0,0,0,.25); }
+  #strandList { max-height: 360px; overflow: auto; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+  #strandList div { padding: 3px 0; border-bottom: 1px dashed var(--line); }
+  .empty { color: var(--muted); padding: 40px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bead Curtain Designer</h1>
+  <span>Upload a pattern image and see it as a doorway bead curtain, using your own beads.</span>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="panel">
+      <h2>1 · Pattern image</h2>
+      <input type="file" id="file" accept="image/*">
+      <div class="hint">You can also paste an image (Ctrl/Cmd+V) or drag one onto the page.</div>
+      <img id="preview" alt="Pattern preview">
+      <label for="fit">Fit image to doorway</label>
+      <select id="fit">
+        <option value="cover">Fill (crop edges)</option>
+        <option value="contain">Fit whole image (pad with background bead)</option>
+        <option value="stretch">Stretch</option>
+      </select>
+    </div>
+
+    <div class="panel">
+      <h2>2 · Doorway</h2>
+      <div class="row">
+        <div><label for="width">Width (cm)</label><input type="number" id="width" value="90" min="10" step="1"></div>
+        <div><label for="height">Height (cm)</label><input type="number" id="height" value="200" min="10" step="1"></div>
+      </div>
+      <div class="row">
+        <div><label for="spacing">Strand spacing (cm)</label><input type="number" id="spacing" value="1.5" min="0.3" step="0.1"></div>
+        <div><label for="margin">Side margin (cm)</label><input type="number" id="margin" value="0.5" min="0" step="0.1"></div>
+      </div>
+      <div class="hint">Spacing is measured centre to centre between strands.</div>
+    </div>
+
+    <div class="panel">
+      <h2>3 · Beads</h2>
+      <div class="row">
+        <div><label for="beadSize">Bead diameter (mm)</label><input type="number" id="beadSize" value="8" min="1" step="0.5"></div>
+        <div><label for="beadGap">Gap between beads (mm)</label><input type="number" id="beadGap" value="0" min="0" step="0.5"></div>
+      </div>
+      <label>Bead colours you have</label>
+      <div class="beads" id="beads"></div>
+      <div class="btns">
+        <button id="addBead">+ Add colour</button>
+        <button id="suggest" title="Pick colours automatically from the image">Suggest from image</button>
+      </div>
+      <div class="row">
+        <div>
+          <label for="suggestN">Colours to suggest</label>
+          <input type="number" id="suggestN" value="6" min="2" max="24">
+        </div>
+        <div>
+          <label for="dither">Colour mixing</label>
+          <select id="dither">
+            <option value="none">Nearest colour</option>
+            <option value="fs">Dither (blend shades)</option>
+          </select>
+        </div>
+      </div>
+      <label for="bgBead">Background bead (for padding)</label>
+      <select id="bgBead"></select>
+    </div>
+  </aside>
+
+  <main>
+    <div class="stats" id="stats"></div>
+    <div class="viewer">
+      <div class="viewer-tools">
+        <label><input type="checkbox" id="showFrame" checked> Door frame</label>
+        <label><input type="checkbox" id="showStrings" checked> Strings</label>
+        <label><input type="checkbox" id="shade" checked> 3D beads</label>
+        <label>Zoom <input type="range" id="zoom" min="1" max="8" step="0.5" value="3"></label>
+        <button id="download">Download image</button>
+        <button id="exportCsv">Download strand list (CSV)</button>
+      </div>
+      <div id="canvasWrap"><canvas id="curtain"></canvas></div>
+    </div>
+
+    <div class="row" style="margin-top:14px; align-items:start">
+      <div class="panel">
+        <h2>Bead shopping list</h2>
+        <div id="bom"></div>
+      </div>
+      <div class="panel">
+        <h2>Strand instructions (top → bottom)</h2>
+        <div id="strandList"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+
+  // ---------- State ----------
+  let img = null;            // loaded HTMLImageElement
+  let grid = null;           // { cols, rows, idx: Int16Array (palette index per bead) }
+  let beads = [
+    { name: 'White',  color: '#f5f2ea' },
+    { name: 'Black',  color: '#1d1b1a' },
+    { name: 'Red',    color: '#c0262d' },
+    { name: 'Yellow', color: '#f2c12e' },
+    { name: 'Blue',   color: '#2560b0' },
+    { name: 'Green',  color: '#2f8a46' },
+  ];
+
+  // ---------- Colour helpers ----------
+  const hexToRgb = h => { h = h.replace('#',''); return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)]; };
+  const rgbToHex = (r,g,b) => '#' + [r,g,b].map(v => Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('');
+  function rgbToLab(r, g, b) {
+    const f = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    let R = f(r), G = f(g), B = f(b);
+    let X = (R*0.4124 + G*0.3576 + B*0.1805) / 0.95047;
+    let Y = (R*0.2126 + G*0.7152 + B*0.0722);
+    let Z = (R*0.0193 + G*0.1192 + B*0.9505) / 1.08883;
+    const g3 = t => t > 0.008856 ? Math.cbrt(t) : 7.787*t + 16/116;
+    X = g3(X); Y = g3(Y); Z = g3(Z);
+    return [116*Y - 16, 500*(X - Y), 200*(Y - Z)];
+  }
+  function nearest(lab, palLab) {
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < palLab.length; i++) {
+      const p = palLab[i];
+      const d = (lab[0]-p[0])**2 + (lab[1]-p[1])**2 + (lab[2]-p[2])**2;
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best;
+  }
+  const shadeHex = (hex, amt) => { const [r,g,b] = hexToRgb(hex); return rgbToHex(r+(255-r)*Math.max(0,amt) + r*Math.min(0,amt), g+(255-g)*Math.max(0,amt) + g*Math.min(0,amt), b+(255-b)*Math.max(0,amt) + b*Math.min(0,amt)); };
+
+  // ---------- Bead list UI ----------
+  function renderBeadList() {
+    const wrap = $('beads'); wrap.innerHTML = '';
+    beads.forEach((b, i) => {
+      const row = document.createElement('div'); row.className = 'bead-row';
+      const c = document.createElement('input'); c.type = 'color'; c.value = b.color;
+      c.oninput = () => { b.color = c.value; update(); };
+      const n = document.createElement('input'); n.type = 'text'; n.value = b.name; n.placeholder = 'Name';
+      n.oninput = () => { b.name = n.value; renderBgSelect(); renderOutputs(); };
+      const hx = document.createElement('input'); hx.type = 'text'; hx.value = b.color;
+      hx.onchange = () => { if (/^#?[0-9a-f]{6}$/i.test(hx.value.trim())) { b.color = '#' + hx.value.trim().replace('#','').toLowerCase(); c.value = b.color; update(); } else hx.value = b.color; };
+      c.addEventListener('input', () => hx.value = c.value);
+      const x = document.createElement('button'); x.className = 'x'; x.textContent = '×'; x.title = 'Remove';
+      x.onclick = () => { if (beads.length > 1) { beads.splice(i,1); renderBeadList(); update(); } };
+      row.append(c, n, hx, x); wrap.append(row);
+    });
+    renderBgSelect();
+  }
+  function renderBgSelect() {
+    const s = $('bgBead'); const prev = s.value;
+    s.innerHTML = beads.map((b,i) => `<option value="${i}">${escapeHtml(b.name || b.color)}</option>`).join('');
+    s.value = prev && +prev < beads.length ? prev : '0';
+  }
+  const escapeHtml = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  // ---------- Dimensions ----------
+  function dims() {
+    const W = Math.max(1, +$('width').value || 0);        // cm
+    const H = Math.max(1, +$('height').value || 0);       // cm
+    const sp = Math.max(0.1, +$('spacing').value || 1);   // cm
+    const margin = Math.max(0, +$('margin').value || 0);  // cm
+    const bd = Math.max(0.5, +$('beadSize').value || 8);  // mm
+    const gap = Math.max(0, +$('beadGap').value || 0);    // mm
+    const usable = Math.max(0, W - 2*margin);
+    const cols = Math.max(1, Math.floor(usable / sp + 1e-9) + 1);
+    const pitch = (bd + gap) / 10; // cm per bead along strand
+    const rows = Math.max(1, Math.floor(H / pitch + 1e-9));
+    const startX = (W - (cols - 1) * sp) / 2;
+    return { W, H, sp, margin, bd, gap, cols, rows, pitch, startX };
+  }
+
+  // ---------- Image sampling ----------
+  // Each strand is a column; each bead a cell. Because strands are far apart
+  // horizontally relative to bead pitch, we sample the image in real-world
+  // proportions so the pattern isn't distorted.
+  function sampleImage(d) {
+    const { cols, rows } = d;
+    const c = document.createElement('canvas'); c.width = cols; c.height = rows;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    const bg = beads[+$('bgBead').value || 0]?.color || '#ffffff';
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, cols, rows);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    // Real-world aspect of the bead area
+    const areaW = Math.max(d.sp * (cols - 1), d.sp), areaH = d.H;
+    const areaAR = areaW / areaH, imgAR = img.width / img.height;
+    const mode = $('fit').value;
+    if (mode === 'stretch') {
+      ctx.drawImage(img, 0, 0, cols, rows);
+    } else if (mode === 'cover') {
+      let sw = img.width, sh = img.height, sx = 0, sy = 0;
+      if (imgAR > areaAR) { sw = img.height * areaAR; sx = (img.width - sw) / 2; }
+      else { sh = img.width / areaAR; sy = (img.height - sh) / 2; }
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, cols, rows);
+    } else { // contain
+      let dw = cols, dh = rows, dx = 0, dy = 0;
+      if (imgAR > areaAR) { dh = rows * (areaAR / imgAR); dy = (rows - dh) / 2; }
+      else { dw = cols * (imgAR / areaAR); dx = (cols - dw) / 2; }
+      ctx.drawImage(img, dx, dy, dw, dh);
+    }
+    return ctx.getImageData(0, 0, cols, rows).data;
+  }
+
+  function quantize(data, cols, rows) {
+    const palLab = beads.map(b => rgbToLab(...hexToRgb(b.color)));
+    const palRgb = beads.map(b => hexToRgb(b.color));
+    const idx = new Int16Array(cols * rows);
+    const dither = $('dither').value === 'fs';
+    const buf = new Float32Array(cols * rows * 3);
+    for (let i = 0, j = 0; i < data.length; i += 4, j += 3) {
+      const a = data[i+3] / 255; // composite transparent pixels on white
+      buf[j] = data[i]*a + 255*(1-a); buf[j+1] = data[i+1]*a + 255*(1-a); buf[j+2] = data[i+2]*a + 255*(1-a);
+    }
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const p = (y*cols + x), j = p*3;
+      const r = buf[j], g = buf[j+1], b = buf[j+2];
+      const k = nearest(rgbToLab(r, g, b), palLab);
+      idx[p] = k;
+      if (dither) {
+        const er = r - palRgb[k][0], eg = g - palRgb[k][1], eb = b - palRgb[k][2];
+        const push = (xx, yy, f) => { if (xx < 0 || xx >= cols || yy >= rows) return; const q = (yy*cols + xx)*3; buf[q] += er*f; buf[q+1] += eg*f; buf[q+2] += eb*f; };
+        push(x+1, y, 7/16); push(x-1, y+1, 3/16); push(x, y+1, 5/16); push(x+1, y+1, 1/16);
+      }
+    }
+    return idx;
+  }
+
+  // ---------- Palette suggestion (k-means in Lab) ----------
+  function suggestPalette(n) {
+    if (!img) { alert('Load an image first.'); return; }
+    const c = document.createElement('canvas'); const s = Math.min(1, 120 / Math.max(img.width, img.height));
+    c.width = Math.max(1, Math.round(img.width * s)); c.height = Math.max(1, Math.round(img.height * s));
+    const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, c.width, c.height);
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    const pts = [];
+    for (let i = 0; i < d.length; i += 4) if (d[i+3] > 128) pts.push([d[i], d[i+1], d[i+2]]);
+    if (!pts.length) return;
+    const labs = pts.map(p => rgbToLab(...p));
+    // k-means++ init
+    const cents = [labs[Math.floor(Math.random()*labs.length)].slice()];
+    while (cents.length < n) {
+      const dist = labs.map(l => Math.min(...cents.map(c => (l[0]-c[0])**2 + (l[1]-c[1])**2 + (l[2]-c[2])**2)));
+      const sum = dist.reduce((a,b)=>a+b,0); if (sum === 0) break;
+      let r = Math.random()*sum, i = 0; while ((r -= dist[i]) > 0 && i < dist.length-1) i++;
+      cents.push(labs[i].slice());
+    }
+    const asg = new Int32Array(labs.length);
+    for (let it = 0; it < 15; it++) {
+      for (let i = 0; i < labs.length; i++) asg[i] = nearest(labs[i], cents);
+      const acc = cents.map(() => [0,0,0,0]);
+      for (let i = 0; i < pts.length; i++) { const a = acc[asg[i]]; a[0]+=pts[i][0]; a[1]+=pts[i][1]; a[2]+=pts[i][2]; a[3]++; }
+      acc.forEach((a, k) => { if (a[3]) cents[k] = rgbToLab(a[0]/a[3], a[1]/a[3], a[2]/a[3]); });
+    }
+    const acc = cents.map(() => [0,0,0,0]);
+    for (let i = 0; i < pts.length; i++) { const a = acc[asg[i]]; a[0]+=pts[i][0]; a[1]+=pts[i][1]; a[2]+=pts[i][2]; a[3]++; }
+    beads = acc.filter(a => a[3]).sort((a,b) => b[3]-a[3]).map((a, i) => ({ name: 'Colour ' + (i+1), color: rgbToHex(a[0]/a[3], a[1]/a[3], a[2]/a[3]) }));
+    renderBeadList(); update();
+  }
+
+  // ---------- Rendering ----------
+  function draw(d) {
+    const cv = $('curtain'), ctx = cv.getContext('2d');
+    const zoom = +$('zoom').value;             // px per cm
+    const frame = $('showFrame').checked ? 8 : 0; // cm
+    const pxW = Math.round((d.W + frame*2) * zoom), pxH = Math.round((d.H + frame + 6) * zoom);
+    const MAX = 16000; const scl = Math.min(1, MAX / Math.max(pxW, pxH));
+    const z = zoom * scl;
+    cv.width = Math.round((d.W + frame*2) * z); cv.height = Math.round((d.H + frame + 6) * z);
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const ox = frame * z, oy = frame * z;
+    // wall + doorway
+    ctx.fillStyle = '#e8e2d8'; ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = '#3a342d'; ctx.fillRect(ox, oy, d.W*z, (d.H+6)*z);
+    if (frame) {
+      ctx.fillStyle = '#8b6a48';
+      ctx.fillRect(ox - 4*z, oy - 4*z, d.W*z + 8*z, 4*z);
+      ctx.fillRect(ox - 4*z, oy - 4*z, 4*z, (d.H + 10)*z);
+      ctx.fillRect(ox + d.W*z, oy - 4*z, 4*z, (d.H + 10)*z);
+    }
+    // rail
+    ctx.fillStyle = '#b9b2a6'; ctx.fillRect(ox, oy, d.W*z, Math.max(2, 1.2*z));
+    if (!grid) return;
+    const r = (d.bd / 20) * z;  // radius px
+    const pitch = d.pitch * z;
+    const shade = $('shade').checked && r > 2;
+    const strings = $('showStrings').checked;
+    const top = oy + 1.2*z + r;
+    // pre-render bead sprites per colour
+    const sprites = beads.map(b => {
+      const s = document.createElement('canvas'); const D = Math.max(2, Math.ceil(r*2) + 2);
+      s.width = s.height = D; const sc = s.getContext('2d'); const c = D/2;
+      if (shade) {
+        const g = sc.createRadialGradient(c - r*0.35, c - r*0.35, r*0.1, c, c, r);
+        g.addColorStop(0, shadeHex(b.color, 0.55)); g.addColorStop(0.55, b.color); g.addColorStop(1, shadeHex(b.color, -0.45));
+        sc.fillStyle = g;
+      } else sc.fillStyle = b.color;
+      sc.beginPath(); sc.arc(c, c, Math.max(0.8, r), 0, Math.PI*2); sc.fill();
+      return s;
+    });
+    for (let x = 0; x < grid.cols; x++) {
+      const cx = ox + (d.startX + x * d.sp) * z;
+      if (strings) {
+        ctx.strokeStyle = 'rgba(220,215,205,.55)'; ctx.lineWidth = Math.max(0.5, 0.06*z);
+        ctx.beginPath(); ctx.moveTo(cx, oy); ctx.lineTo(cx, top + (grid.rows - 1) * pitch + r); ctx.stroke();
+      }
+      for (let y = 0; y < grid.rows; y++) {
+        const s = sprites[grid.idx[y*grid.cols + x]];
+        ctx.drawImage(s, cx - s.width/2, top + y*pitch - s.height/2);
+      }
+    }
+  }
+
+  function renderOutputs(d = dims()) {
+    const counts = new Array(beads.length).fill(0);
+    if (grid) for (const k of grid.idx) counts[k]++;
+    const total = grid ? grid.idx.length : d.cols * d.rows;
+    const strandLen = (d.rows * d.pitch / 100);
+    $('stats').innerHTML = [
+      [d.cols, 'strands'], [d.rows, 'beads per strand'], [total.toLocaleString(), 'beads total'],
+      [beads.length, 'colours'], [(strandLen * d.cols).toFixed(1) + ' m', 'beaded string (excl. knots)'],
+    ].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
+    if (!grid) {
+      $('bom').innerHTML = '<div class="hint">Load an image to see the bead counts.</div>';
+      $('strandList').innerHTML = '<div class="hint">Load an image to see the instructions for each strand.</div>';
+      return;
+    }
+    $('bom').innerHTML = '<table><tr><th>Bead</th><th>Count</th><th>Buy (+10%)</th></tr>' +
+      beads.map((b, i) => ({ b, i, n: counts[i] })).sort((a, b) => b.n - a.n).map(({ b, n }) =>
+        `<tr><td><span class="sw" style="background:${b.color}"></span>${escapeHtml(b.name || b.color)}</td><td>${n.toLocaleString()}</td><td>${Math.ceil(n*1.1).toLocaleString()}</td></tr>`).join('') + '</table>';
+    const lines = [];
+    for (let x = 0; x < grid.cols; x++) lines.push(`<div><b>#${x+1}</b>: ${runs(x).map(([k, n]) => `<span class="sw" style="background:${beads[k].color}"></span>${n}×${escapeHtml(beads[k].name || beads[k].color)}`).join(', ')}</div>`);
+    $('strandList').innerHTML = lines.join('');
+  }
+  function runs(x) {
+    const out = []; let prev = -1, n = 0;
+    for (let y = 0; y < grid.rows; y++) { const k = grid.idx[y*grid.cols + x]; if (k === prev) n++; else { if (n) out.push([prev, n]); prev = k; n = 1; } }
+    if (n) out.push([prev, n]); return out;
+  }
+
+  // ---------- Update pipeline ----------
+  let raf = 0;
+  function update() { cancelAnimationFrame(raf); raf = requestAnimationFrame(run); }
+  function run() {
+    const d = dims();
+    if (img) {
+      const data = sampleImage(d);
+      grid = { cols: d.cols, rows: d.rows, idx: quantize(data, d.cols, d.rows) };
+    } else grid = null;
+    draw(d); renderOutputs(d);
+  }
+
+  // ---------- Image input ----------
+  function loadFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => { img = im; $('preview').src = url; $('preview').style.display = 'block'; update(); };
+    im.onerror = () => alert('Could not read that image.');
+    im.src = url;
+  }
+  $('file').onchange = e => loadFile(e.target.files[0]);
+  document.addEventListener('paste', e => { for (const it of e.clipboardData?.items || []) if (it.type.startsWith('image/')) { loadFile(it.getAsFile()); break; } });
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => { e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+
+  // ---------- Controls ----------
+  ['width','height','spacing','margin','beadSize','beadGap','fit','dither','bgBead','showFrame','showStrings','shade','zoom']
+    .forEach(id => $(id).addEventListener('input', update));
+  $('addBead').onclick = () => { beads.push({ name: 'Colour ' + (beads.length+1), color: '#888888' }); renderBeadList(); update(); };
+  $('suggest').onclick = () => suggestPalette(Math.max(2, Math.min(24, +$('suggestN').value || 6)));
+  $('download').onclick = () => { const a = document.createElement('a'); a.download = 'bead-curtain.png'; a.href = $('curtain').toDataURL('image/png'); a.click(); };
+  $('exportCsv').onclick = () => {
+    if (!grid) { alert('Load an image first.'); return; }
+    const rows = [['strand', 'position_from_top', 'bead_name', 'hex']];
+    for (let x = 0; x < grid.cols; x++) for (let y = 0; y < grid.rows; y++) { const b = beads[grid.idx[y*grid.cols + x]]; rows.push([x+1, y+1, b.name, b.color]); }
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const a = document.createElement('a'); a.download = 'bead-curtain-strands.csv';
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.click();
+  };
+
+  renderBeadList();
+  update();
+})();
+</script>
+</body>
+</html>
